@@ -1,2 +1,4 @@
 Manifest-Version: 1.0
+Class-Path: mips_emulator.jar
 Main-Class: me.zhanghai.mipsasm.Main
+
