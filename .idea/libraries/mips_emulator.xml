@@ -1,0 +1,9 @@
+<component name="libraryTable">
+  <library name="mips_emulator">
+    <CLASSES>
+      <root url="jar://$PROJECT_DIR$/lib/mips_emulator.jar!/" />
+    </CLASSES>
+    <JAVADOC />
+    <SOURCES />
+  </library>
+</component>

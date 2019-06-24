@@ -5,6 +5,49 @@
 
 package me.zhanghai.mipsasm.gui;
 
+import org.eclipse.swt.SWT;
+import org.eclipse.swt.custom.ST;
+import org.eclipse.swt.custom.SashForm;
+import org.eclipse.swt.custom.StyledText;
+import org.eclipse.swt.dnd.DND;
+import org.eclipse.swt.dnd.DropTarget;
+import org.eclipse.swt.dnd.DropTargetAdapter;
+import org.eclipse.swt.dnd.DropTargetEvent;
+import org.eclipse.swt.dnd.FileTransfer;
+import org.eclipse.swt.dnd.Transfer;
+import org.eclipse.swt.events.ModifyEvent;
+import org.eclipse.swt.events.ModifyListener;
+import org.eclipse.swt.events.SelectionAdapter;
+import org.eclipse.swt.events.SelectionEvent;
+import org.eclipse.swt.graphics.Font;
+import org.eclipse.swt.graphics.FontData;
+import org.eclipse.swt.graphics.Image;
+import org.eclipse.swt.layout.FillLayout;
+import org.eclipse.swt.printing.PrintDialog;
+import org.eclipse.swt.printing.Printer;
+import org.eclipse.swt.printing.PrinterData;
+import org.eclipse.swt.program.Program;
+import org.eclipse.swt.widgets.Display;
+import org.eclipse.swt.widgets.Event;
+import org.eclipse.swt.widgets.FileDialog;
+import org.eclipse.swt.widgets.Listener;
+import org.eclipse.swt.widgets.Menu;
+import org.eclipse.swt.widgets.MenuItem;
+import org.eclipse.swt.widgets.MessageBox;
+import org.eclipse.swt.widgets.Shell;
+
+import java.io.ByteArrayOutputStream;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.util.ResourceBundle;
+
+import indi.key.mipsemulator.Main;
+import indi.key.mipsemulator.controller.stage.SwordController;
+import javafx.application.Platform;
 import me.zhanghai.mipsasm.Build;
 import me.zhanghai.mipsasm.assembler.Assembler;
 import me.zhanghai.mipsasm.assembler.AssemblerException;
@@ -22,27 +65,6 @@ import me.zhanghai.mipsasm.util.IoUtils;
 import me.zhanghai.mipsasm.util.StringUtils;
 import me.zhanghai.mipsasm.writer.Writer;
 import me.zhanghai.mipsasm.writer.WriterException;
-import org.eclipse.swt.SWT;
-import org.eclipse.swt.custom.ST;
-import org.eclipse.swt.custom.SashForm;
-import org.eclipse.swt.custom.StyledText;
-import org.eclipse.swt.dnd.*;
-import org.eclipse.swt.events.ModifyEvent;
-import org.eclipse.swt.events.ModifyListener;
-import org.eclipse.swt.events.SelectionAdapter;
-import org.eclipse.swt.events.SelectionEvent;
-import org.eclipse.swt.graphics.Font;
-import org.eclipse.swt.graphics.FontData;
-import org.eclipse.swt.graphics.Image;
-import org.eclipse.swt.layout.FillLayout;
-import org.eclipse.swt.printing.PrintDialog;
-import org.eclipse.swt.printing.Printer;
-import org.eclipse.swt.printing.PrinterData;
-import org.eclipse.swt.program.Program;
-import org.eclipse.swt.widgets.*;
-
-import java.io.*;
-import java.util.ResourceBundle;
 
 public class Ide {
 
@@ -90,7 +112,7 @@ public class Ide {
         Display.setAppVersion(Build.VERSION_NAME);
         display = new Display();
 
-        icons = SwtUtils.loadImageArray(new String[] {
+        icons = SwtUtils.loadImageArray(new String[]{
                 "/res/drawable/mipside_512.png",
                 "/res/drawable/mipside_256.png",
                 "/res/drawable/mipside_128.png",
@@ -105,7 +127,7 @@ public class Ide {
         } catch (IOException e) {
             e.printStackTrace();
         }
-        editFont = new Font(display, new FontData[] {
+        editFont = new Font(display, new FontData[]{
                 new FontDataBuilder().setName("Source Code Pro").setHeight(11).build(),
                 new FontDataBuilder().setName("monospace").setHeight(11).build(),
         });
@@ -345,6 +367,43 @@ public class Ide {
         };
         updateAssembleMenuRunnable.run();
 
+        Menu runMenu = new Menu(shell, SWT.DROP_DOWN);
+        new MenuItemBuilder(runMenu)
+                .setText(resourceBundle.getString("menu.run.run"))
+                .setAccelerator(SWT.F5)
+                .addSelectionListener(new SelectionAdapter() {
+                    @Override
+                    public void widgetSelected(SelectionEvent selectionEvent) {
+                        final File coeFile = assemble(Writer.COE, "coe");
+                        if (coeFile != null) {
+                            if (Main.INSTANCE != null) {
+                                Platform.runLater(new Runnable() {
+                                    @Override
+                                    public void run() {
+                                        try {
+                                            SwordController.getInstance().openFile(coeFile);
+                                            SwordController.getInstance().toFront();
+                                        } catch (Exception ignore) {
+                                        }
+                                    }
+                                });
+                            } else {
+                                new Thread(new Runnable() {
+                                    @Override
+                                    public void run() {
+                                        Main.main(new String[]{coeFile.getAbsolutePath()});
+                                    }
+                                }).start();
+                            }
+                        }
+                    }
+                })
+                .build();
+        new MenuItemBuilder(menu, SWT.CASCADE)
+                .setText(resourceBundle.getString("menu.run"))
+                .setMenu(runMenu)
+                .build();
+
         Menu helpMenu = new Menu(shell, SWT.DROP_DOWN);
         new MenuItemBuilder(helpMenu)
                 .setText(resourceBundle.getString("menu.help.about"))
@@ -447,7 +506,7 @@ public class Ide {
             fileDialog.setFileName(file.getName());
             fileDialog.setFilterPath(file.getParent());
             fileDialog.setFilterNames(resourceBundle.getString("menu.file.save_as.filter_names").split("\\|"));
-            fileDialog.setFilterExtensions(new String[] {
+            fileDialog.setFilterExtensions(new String[]{
                     "*.s",
                     "*.asm",
                     "*.txt",
@@ -638,12 +697,12 @@ public class Ide {
         disassemble(new File(filename));
     }
 
-    private void assemble(Writer writer, String extension, boolean shouldClearMessage) {
+    private File assemble(Writer writer, String extension, boolean shouldClearMessage) {
 
         if (file == null || shell.getModified()) {
             onSave();
             if (file == null || shell.getModified()) {
-                return;
+                return null;
             }
         }
 
@@ -658,15 +717,17 @@ public class Ide {
             writer.write(new FileOutputStream(output), context);
             showMessage(String.format(resourceBundle.getString("assemble.ok"), output));
             showMessageNewLine();
+            return output;
         } catch (Exception e) {
             showMessage(String.format(resourceBundle.getString("assemble.error"), file));
             showMessageNewLine();
             showMessage(e);
+            return null;
         }
     }
 
-    private void assemble(Writer writer, String extension) {
-        assemble(writer, extension, true);
+    private File assemble(Writer writer, String extension) {
+        return assemble(writer, extension, true);
     }
 
     private void showMessage(String error) {
